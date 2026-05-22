@@ -2,7 +2,7 @@
 // @name         TradingView Optimizer
 // @namespace    https://github.com/rainocean
 // @author       rainocean
-// @version      1.2.1
+// @version      1.2.2
 // @description  TradingView 优化：隐藏付费弹窗 Toast 提示，提供 Watchlist 批量添加、Pine Log 复制、Symbol 快捷键，以及 Pine Editor/Pine Log 快捷切换。
 // @license      MIT
 // @match        *://*.tradingview.com/*
