@@ -19,7 +19,9 @@
 - **TradingView 快捷键增加**
   - `Alt + S`：打开 Symbol Search。
   - `Alt + C`：打开 Compare Symbols。
-  - 输入框、文本域、可编辑区域内不会触发快捷键。
+  - `Ctrl + Alt + E`：打开/关闭 Pine Editor。
+  - `Ctrl + Alt + L`：打开/关闭 Pine Log。
+  - 输入框、文本域、可编辑区域内不会触发 `Alt + S` / `Alt + C`；Pine Editor 内仍可使用 `Ctrl + Alt + E` / `Ctrl + Alt + L`。
 
 - **Pine Log 复制**
   - 在 TradingView 图表页的 Pine Log 面板附近添加复制按钮。

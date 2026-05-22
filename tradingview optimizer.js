@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TradingView Optimizer
 // @namespace    https://github.com/rainocean
-// @version      1.2.0
-// @description  TradingView 优化：隐藏付费弹窗 Toast 提示，提供 Watchlist 批量添加、Pine Log 复制和 Symbol 快捷键。
+// @version      1.2.1
+// @description  TradingView 优化：隐藏付费弹窗 Toast 提示，提供 Watchlist 批量添加、Pine Log 复制、Symbol 快捷键，以及 Pine Editor/Pine Log 快捷切换。
 // @match        *://*.tradingview.com/*
 // @match        *://tradingview.com/*
 // @grant        none
@@ -229,6 +229,121 @@
       document.querySelector('button[id*="compare" i][aria-haspopup="dialog"]');
   }
 
+  function findOpenPineLogPanel() {
+    return [...document.querySelectorAll('[data-test-id-widget-type="pine_logs"], .widgetbar-widget-pine_logs')]
+      .find(isVisible);
+  }
+
+  function findPineLogButton() {
+    const direct = [
+      '[data-qa-id="open-pine-logs"]',
+      'button[aria-label*="Pine Log" i]',
+      'button[aria-label*="Pine Logs" i]',
+      'button[data-tooltip*="Pine Log" i]',
+      'button[title*="Pine Log" i]',
+      '[role="tab"][aria-label*="Pine Log" i]',
+      '[role="tab"][title*="Pine Log" i]'
+    ].map(sel => document.querySelector(sel)).find(isVisible);
+    if (direct) return direct;
+
+    return [...document.querySelectorAll('button, [role="button"], [role="tab"], [role="menuitem"]')]
+      .find(el => isVisible(el) && /^pine logs?$/i.test(getText(el).replace(/Click to learn more/i, '').trim()));
+  }
+
+  function findPineEditorButton() {
+    return [...document.querySelectorAll('[data-name="pine-dialog-button"], button[aria-label="Pine" i], button[data-tooltip="Pine" i]')]
+      .find(isVisible);
+  }
+
+  function findPineScriptMoreOptionsButton() {
+    return [...document.querySelectorAll('[data-qa-id="script-more-options"]')]
+      .find(isVisible);
+  }
+
+  function getPineEditorRoots() {
+    const moreButton = findPineScriptMoreOptionsButton();
+    return [
+      moreButton?.closest('[class*="widget" i]'),
+      moreButton?.closest('[class*="dialog" i]'),
+      moreButton?.closest('[class*="container" i]'),
+      moreButton?.closest('[class*="pane" i]'),
+      document
+    ].filter(Boolean);
+  }
+
+  function findPineEditorCloseButton() {
+    const moreButton = findPineScriptMoreOptionsButton();
+    for (const root of getPineEditorRoots()) {
+      const closeButton = [...root.querySelectorAll('button[aria-label="Close" i], button[title="Close" i]')]
+        .filter(isVisible)
+        .find(btn => btn !== moreButton);
+      if (closeButton) return closeButton;
+    }
+    return null;
+  }
+
+  function findPineLogCloseButton() {
+    const panel = findOpenPineLogPanel();
+    if (!panel) return null;
+    const root = panel.closest('.widgetbar-page') || panel;
+    return [...root.querySelectorAll('button[aria-label="Close" i], button[title="Close" i], [data-name*="close" i]')]
+      .find(isVisible);
+  }
+
+  function togglePineEditor() {
+    const closeButton = findPineEditorCloseButton();
+    if (closeButton) {
+      safeClick(closeButton);
+      return true;
+    }
+
+    const pineEditorButton = findPineEditorButton();
+    if (!pineEditorButton) {
+      showToast('未找到 Pine Editor 入口');
+      return false;
+    }
+    safeClick(pineEditorButton);
+    return true;
+  }
+
+  async function openPineLogPanel() {
+    if (findOpenPineLogPanel()) return true;
+
+    let pineLogButton = findPineLogButton();
+    if (!pineLogButton) {
+      const pineEditorButton = findPineEditorButton();
+      if (pineEditorButton) {
+        safeClick(pineEditorButton);
+        await sleep(250);
+      }
+
+      const moreButton = await waitFor(findPineScriptMoreOptionsButton, 2000, 100);
+      if (moreButton) {
+        safeClick(moreButton);
+        await sleep(150);
+      }
+
+      pineLogButton = await waitFor(findPineLogButton, 2000, 100);
+    }
+
+    if (!pineLogButton) {
+      showToast('未找到 Pine Log 入口');
+      return false;
+    }
+    safeClick(pineLogButton);
+    await waitFor(findOpenPineLogPanel, 2000, 100);
+    return true;
+  }
+
+  async function togglePineLogPanel() {
+    const closeButton = findPineLogCloseButton();
+    if (closeButton) {
+      safeClick(closeButton);
+      return true;
+    }
+    return openPineLogPanel();
+  }
+
   function triggerNativeToolbarButton(findButton, fallbackMessage) {
     const button = findButton();
     if (!button) {
@@ -242,19 +357,33 @@
   function initToolbarShortcuts() {
     if (!/\/chart\//.test(location.pathname)) return;
     window.addEventListener('keydown', e => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.repeat || isEditableTarget(e.target)) return;
+      if (e.metaKey || e.shiftKey || e.repeat) return;
       const key = e.key.toLowerCase();
-      if (key === 's') {
+      const editable = isEditableTarget(e.target);
+      const altOnly = e.altKey && !e.ctrlKey;
+      const ctrlAlt = e.ctrlKey && e.altKey;
+      if (altOnly && key === 's' && !editable) {
         e.preventDefault();
         e.stopPropagation();
         triggerNativeToolbarButton(findSymbolSearchButton, '未找到 Symbol Search 入口');
-      } else if (key === 'c') {
+      } else if (altOnly && key === 'c' && !editable) {
         e.preventDefault();
         e.stopPropagation();
         triggerNativeToolbarButton(findCompareSymbolsButton, '未找到 Compare Symbols 入口');
+      } else if (ctrlAlt && key === 'l') {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePineLogPanel().catch(err => {
+          console.error('[TV-OPT Pine Log]', err);
+          showToast('切换 Pine Log 失败');
+        });
+      } else if (ctrlAlt && key === 'e') {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePineEditor();
       }
     }, true);
-    log('Toolbar shortcuts 已加载: Alt+S Symbol Search, Alt+C Compare');
+    log('Toolbar shortcuts 已加载: Alt+S Symbol Search, Alt+C Compare, Ctrl+Alt+L Pine Log, Ctrl+Alt+E Pine Editor');
   }
 
   function initPaywallToast() {
@@ -774,7 +903,9 @@
         <div class="tv-opt-wlc-shortcuts">
           快捷键：<br>
             <span class="tv-opt-kbd">Alt</span> + <span class="tv-opt-kbd">S</span> 打开 Symbol Search；<br>
-            <span class="tv-opt-kbd">Alt</span> + <span class="tv-opt-kbd">C</span> 打开 Compare Symbols。
+            <span class="tv-opt-kbd">Alt</span> + <span class="tv-opt-kbd">C</span> 打开 Compare Symbols；<br>
+            <span class="tv-opt-kbd">Ctrl</span> + <span class="tv-opt-kbd">Alt</span> + <span class="tv-opt-kbd">E</span> 打开/关闭 Pine Editor；<br>
+            <span class="tv-opt-kbd">Ctrl</span> + <span class="tv-opt-kbd">Alt</span> + <span class="tv-opt-kbd">L</span> 打开/关闭 Pine Log。
         </div>
         <div class="tv-opt-status tv-opt-status-i" id="tv-opt-status">v1.2.0</div>
       </div>`;
