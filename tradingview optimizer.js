@@ -2,12 +2,13 @@
 // @name         TradingView Optimizer
 // @namespace    https://github.com/rainocean
 // @author       rainocean
-// @version      1.2.2
+// @version      1.2.3
 // @description  TradingView 优化：隐藏付费弹窗 Toast 提示，提供 Watchlist 批量添加、Pine Log 复制、Symbol 快捷键，以及 Pine Editor/Pine Log 快捷切换。
 // @license      MIT
 // @match        *://*.tradingview.com/*
 // @match        *://tradingview.com/*
-// @grant        none
+// @grant        GM_setClipboard
+// @grant        GM.setClipboard
 // @run-at       document-start
 // ==/UserScript==
 
@@ -21,6 +22,43 @@
   const OBSERVED_ATTRS = ['class', 'style'];
   const log = (...a) => console.log('[TV-OPT]', ...a);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function copyText(text) {
+    if (typeof GM_setClipboard === 'function') {
+      GM_setClipboard(text, 'text');
+      return;
+    }
+
+    if (typeof GM !== 'undefined' && typeof GM.setClipboard === 'function') {
+      await GM.setClipboard(text, 'text');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (e) {
+      log('Clipboard API 复制失败，尝试回退复制:', e);
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.inset = '0 auto auto 0';
+    textarea.style.inlineSize = '1px';
+    textarea.style.blockSize = '1px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+      if (!document.execCommand('copy')) throw new Error('execCommand copy returned false');
+    } finally {
+      textarea.remove();
+    }
+  }
 
   const CLICK_PAY_SELECTORS = [
     '.tv-floating-toolbar__widget--go-pro',
@@ -983,10 +1021,10 @@
       if (addIdx < total) { addIdx++; drawWatchlistPanel(panel); }
     };
     panel.querySelector('#tv-opt-copy-one').onclick = () => {
-      if (addIdx < total) { navigator.clipboard.writeText(symbols[addIdx]); status(`已复制 ${symbols[addIdx]}`); }
+      if (addIdx < total) { copyText(symbols[addIdx]); status(`已复制 ${symbols[addIdx]}`); }
     };
     panel.querySelector('#tv-opt-copy-all').onclick = () => {
-      navigator.clipboard.writeText(symbols.join(', '));
+      copyText(symbols.join(', '));
       status(`已复制全部 ${total} 个`);
     };
   }
@@ -1173,8 +1211,9 @@
         return;
       }
 
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       btn.title = `已复制 ${text.split('\n').length} 行`;
+      showToast(btn.title);
     } catch (e) {
       console.error('[TV-OPT Pine Log]', e);
       btn.classList.remove('copied');
